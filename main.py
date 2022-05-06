@@ -1,71 +1,85 @@
 import requests
+from bs4 import BeautifulSoup
 from tqdm import tqdm
+import sqlite3
 
-all_games_url = "https://api.steampowered.com/ISteamApps/GetAppList/v0002/?key=STEAMKEY&format=json"
+last_game = 0
+
+salepage_url = f"https://store.steampowered.com/search/results/?query&start={last_game}" \
+               f"&count=50&dynamic_data=&sort_by=_ASC&snr=1_7_7_2300_7&specials=1&infinite=1"
+
 game_info_url = "https://store.steampowered.com/api/appdetails?appids="
 
 
-def get_games(url):
-    games = requests.get(url).json()["applist"]["apps"]
+def parse_salepage(url):
+    global last_game
+
+    games = []
+
+    answer = requests.get(url).json()
+    soup = BeautifulSoup(answer["results_html"], 'html.parser')
+    links = soup.find_all("a")
+    for _ in range(answer["total_count"] // 50):
+        for i in links:
+            appid = i.attrs.get("data-ds-appid")
+            if appid:
+                games.append(appid)
+
     return games
 
 
-def get_games_info(url):
-    games = get_games(all_games_url)
-    games = list(filter(lambda x: x["name"], games))
+def get_info_about_games(url):
+    games = []
 
-    data = []
+    for appid in tqdm(parse_salepage(salepage_url)):
+        answer = requests.get(url + appid).json()
+        # print(str(appid))
+        if answer:
+            answer = answer[str(appid)]
+            games.append(1)
 
-    for game in tqdm(games):
+        if len(games) == 10:
+            return games
+        # print(answer)
+        # print()
+        # if answer["success"] and answer["data"]["type"] == "game" and not answer["data"]["is_free"]:
+        #     name = answer["data"]["name"]
+        #     short_description = answer["data"]["short_description"]
+        #     discount_percent = answer["data"]["price_overview"]["discount_percent"]
+        #     initial_price = answer["data"]["price_overview"]["initial_formatted"]
+        #     final_formatted = answer["data"]["price_overview"]["final_formatted"]
+        #     platforms = answer["data"]["platforms"]
+        #     genres = [genre["description"] for genre in answer["data"]["genres"]]
+        #     screenshots = [screenshot["path_thumbnail"] for screenshot in answer["data"]["screenshots"]]
+        #     game_url = f"https://store.steampowered.com/app/{appid}"
+        #     games.append({
+        #         "name": name,
+        #         "short_description": short_description,
+        #         "discount_percent": discount_percent,
+        #         "initial_price": initial_price,
+        #         "final_formatted": final_formatted,
+        #         "platforms": platforms,
+        #         "genres": genres,
+        #         "screenshots": screenshots,
+        #         "game_url": game_url,
+        #         "appid": appid
+        #     })
 
-        game_info_answer = requests.get(url + str(game["appid"])).json()
+    return len(games)
 
-        if game_info_answer and game_info_answer[str(game["appid"])]["success"]:
 
-            if game_info_answer[str(game["appid"])]["data"]["type"] == "game":
-
-                if not game_info_answer[str(game["appid"])]["data"]["is_free"]:
-
-                    if not game_info_answer[str(game["appid"])]["data"]["release_date"]["coming_soon"]:
-
-                        if game_info_answer[str(game["appid"])]["data"].get("price_overview"):
-
-                            if game_info_answer[str(game["appid"])]["data"]["price_overview"]["discount_percent"] != 0:
-
-                                if game_info_answer[str(game["appid"])]["data"].get("genres"):
-                                    genres = [i["description"] for i in
-                                              game_info_answer[str(game["appid"])]["data"]["genres"]]
-                                else:
-                                    genres = []
-
-                                if game_info_answer[str(game["appid"])]["data"].get("screenshots"):
-                                    screenshots = [i["path_thumbnail"] for i in
-                                                   game_info_answer[str(game["appid"])]["data"]["screenshots"]]
-                                else:
-                                    screenshots = []
-
-                                name = game_info_answer[str(game["appid"])]["data"]["name"]
-                                short_description = game_info_answer[str(game["appid"])]["data"][
-                                    "short_description"]
-                                discount = game_info_answer[str(game["appid"])]["data"]["price_overview"][
-                                    "discount_percent"]
-                                base_price = game_info_answer[str(game["appid"])]["data"]["price_overview"][
-                                    "initial_formatted"]
-                                current_price = game_info_answer[str(game["appid"])]["data"]["price_overview"][
-                                    "final_formatted"]
-                                platforms = game_info_answer[str(game["appid"])]["data"]["platforms"]
-
-                                data.append({
-                                    "name": name,
-                                    "short_description": short_description,
-                                    "discount": discount,
-                                    "base_price": base_price,
-                                    "current_price": current_price,
-                                    "platforms": platforms,
-                                    "screenshots": screenshots,
-                                    "genres": genres
-                                })
+def write_to_database():
+    connection = sqlite3.connect("steam.db")
+    for game in get_info_about_games(game_info_url):
+        connection.execute(
+            "INSERT INTO games ('appid', 'name', 'short_description', 'discount_percent', 'initial_price', 'final_formatted', 'windows', 'mac', 'linux', 'genres', 'screenshots', 'game_url') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [game["appid"], game["name"], game["short_description"], game["discount_percent"], game["initial_price"],
+             game["final_formatted"], game["platforms"]["windows"], game["platforms"]["mac"],
+             game["platforms"]["linux"], ", ".join(game["genres"]),
+             "\n".join(game["screenshots"]), game["game_url"]])
+    connection.commit()
+    connection.close()
 
 
 if __name__ == "__main__":
-    get_games_info(game_info_url)
+    print(get_info_about_games(game_info_url))
