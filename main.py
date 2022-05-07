@@ -167,19 +167,25 @@ def process_message(message):
 
 
 def save_price(message):  # message.text
-    conn = connect("Common/steam.db")
-    id = message.from_user.id
-    cursor = conn.execute("UPDATE users SET Price = ? WHERE Id = ? ", [int(message.text), id])
-    bot.send_message(message.chat.id, 'Цена обновлена ')
-    conn.commit()
+    if str(message.text) == 'Назад':
+        bot.send_message(message.chat.id, 'Вы перенесены', reply_markup=keyb1)
+    else:
+        conn = connect("Common/steam.db")
+        id = message.from_user.id
+        cursor = conn.execute("UPDATE users SET Price = ? WHERE Id = ? ", [int(message.text), id])
+        bot.send_message(message.chat.id, 'Цена обновлена ')
+        conn.commit()
 
 
 def save_discount(message):  # message.text
-    conn = connect("Common/steam.db")
-    id = message.from_user.id
-    cursor = conn.execute("UPDATE users SET Discount = ? WHERE Id = ? ", [int(message.text), id])
-    bot.send_message(message.chat.id, 'Процент обновлён ')
-    conn.commit()  # desired
+    if str(message.text) == 'Назад':
+        bot.send_message(message.chat.id, 'Вы перенесены', reply_markup=keyb1)
+    else:
+        conn = connect("Common/steam.db")
+        id = message.from_user.id
+        cursor = conn.execute("UPDATE users SET Discount = ? WHERE Id = ? ", [int(message.text), id])
+        bot.send_message(message.chat.id, 'Процент обновлён ')
+        conn.commit()  # desired
 
 
 def save_desired(message):  # message.text
