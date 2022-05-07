@@ -1,3 +1,6 @@
+import threading
+import time
+
 from telebot import types, TeleBot
 from telebot.types import *
 from sqlite3 import connect
@@ -38,7 +41,7 @@ def start(message):
 
     cursor = conn.execute("SELECT * FROM users WHERE id = ?", [id])
     if not cursor.fetchall():
-        conn.execute("INSERT INTO users VALUES (?, ?, ?, ?)", [id, 0, 0, ""])
+        conn.execute("INSERT INTO users VALUES (?, ?, ?, ?, ?)", [id, 0, 0, "", ""])
         conn.commit()
 
 
@@ -223,5 +226,78 @@ def del_desired(message):  # message.text
     bot.send_message(message.chat.id, 'Жанр удален', reply_markup=keyb3)
     conn.commit()  # desired
 
+def updater():
+    while True:
+        try:
+            conn = connect("Common/steam.db")
+            cursor = conn.execute("SELECT Desired FROM users WHERE Id = ?", [id])
+            genres = cursor.fetchone()[0].split(";")
+            # print(genres)
+
+            user_suitable_games = set()
+
+            for i in genres:
+                if i:
+                    # print(i)
+                    cursor1 = conn.execute("SELECT * FROM games where genres = ?", [i])
+                    for game in cursor1.fetchall():
+                        user_suitable_games.add(game)
+
+            user_discount = int(conn.execute("SELECT Discount FROM users WHERE Id = ?", [id]).fetchone()[0])
+            print(user_discount)
+
+            answer = []
+
+            sended_games = ""
+
+            for i in user_suitable_games:
+                if user_discount >= int(i[3]):
+                    answer.append(i)
+                    sended_games += str(i[0]) + "\n"
+
+            counter = 0
+
+            cursor = conn.execute("select sended_games from users where id = ?", [id])
+            sended_games = cursor.fetchone()[0]
+
+            sending = []
+            # print("initial", sended_games)
+            if len(user_suitable_games) > 10:
+                for game in user_suitable_games:
+                    if counter == 10:
+                        break
+                    else:
+                        if str(game[0]) not in sended_games:
+                            # print(game[0], sended_games.replace('\n', '_'))
+                            bot.send_message(id, f"Игра - {game[1]}\n"
+                                                              f"Цена была - {game[4]}\n"
+                                                              f"Цена стала - {game[5]}\n"
+                                                              f"Скидка - {game[3]}%\n"
+                                                              f"Ссылка на игру в Steam - {game[11]}\n")
+                            sended_games += str(game[0]) + "\n"
+                            conn.execute("UPDATE users SET sended_games = ? WHERE id = ?", [sended_games, id])
+                            conn.commit()
+                            counter += 1
+                        else:
+                            sending.append([game[0]])
+            else:
+                for game in user_suitable_games:
+                    bot.send_message(id, f"Игра - {game[1]}\n"
+                                                      f"Цена была - {game[4]}\n"
+                                                      f"Цена стала - {game[5]}\n"
+                                                      f"Скидка - {game[3]}%\n"
+                                                      f"Ссылка на игру в Steam - {game[11]}\n")
+                    sended_games += str(game[0]) + "\n"
+                    conn.execute("UPDATE users SET sended_games = ? WHERE Id = ?", [sended_games, id])
+                    conn.commit()
+                    counter += 1
+            conn.close()
+
+        except Exception as e:
+            print("error", e)
+        time.sleep(18000)
+
+t = threading.Thread(target=updater)
+t.start()
 
 bot.polling()
