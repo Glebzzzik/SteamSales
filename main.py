@@ -2,6 +2,7 @@ from telebot import types, TeleBot
 from telebot.types import *
 from sqlite3 import connect
 
+
 bot = TeleBot(token='5314538945:AAGurlaBMqcoOxeKk2yrMUABvDOc_c_3LK4')
 
 keyb1 = types.ReplyKeyboardMarkup(row_width=5)
@@ -157,6 +158,9 @@ def process_message(message):
                 counter += 1
         conn.close()
 
+        if counter == 0:
+            bot.send_message(message.chat.id, "Пока что нам нечего вам предложить, мы обязательно напишем вам, когда в Steam появятся новые игры со скидкой")
+
     elif message.text == "Удалить":
         bot.send_message(message.chat.id, ' Удалить жанр (название вбивай точно и без кавычек) ', reply_markup=keyb4)
         bot.register_next_step_handler(message, del_desired)  # Donation Alerts (пожертвование)
@@ -188,10 +192,9 @@ def save_desired(message):  # message.text
         id = message.from_user.id
         cursor = conn.execute("SELECT Desired FROM users WHERE Id = ?", [id])
         old_desired = list(cursor.fetchone())
-        desired = str(old_desired[0]) + " " + str(message.text)
+        desired = str(old_desired[0]) + ";" + str(message.text)
         desired = desired.strip()
         desired = desired.replace('None,', '')
-        desired = desired.replace(' ', ';')
         conn.commit()
         conn.execute("UPDATE users SET Desired = ? WHERE Id = ?", [str(desired), id])
         bot.send_message(message.chat.id, 'Жанр добавлен ', reply_markup=keyb3)
