@@ -1,79 +1,220 @@
-import requests
-from bs4 import BeautifulSoup
-from tqdm import tqdm
-import sqlite3
+from telebot import types, TeleBot
+from telebot.types import *
+from sqlite3 import connect
 
-last_game = 0
+bot = TeleBot(token='5314538945:AAGurlaBMqcoOxeKk2yrMUABvDOc_c_3LK4')
 
-salepage_url = "https://store.steampowered.com/search/results/?query&start={0}" \
-               "&count=50&dynamic_data=&sort_by=_ASC&snr=1_7_7_2300_7&specials=1&infinite=1"
+keyb1 = types.ReplyKeyboardMarkup(row_width=5)
+keyb1.add(KeyboardButton('Настройки'), KeyboardButton('Информация'))
+keyb1.add(KeyboardButton('Donation Alerts (пожертвование)'), KeyboardButton('Показать игры по настройкам'))
 
-game_info_url = "https://store.steampowered.com/api/appdetails?appids="
+keyb2 = ReplyKeyboardMarkup(row_width=5)
+keyb2.add(KeyboardButton('Цена'), KeyboardButton('Процент скидки'))
+keyb2.add(KeyboardButton('Желаемое'), KeyboardButton('Назад'))
 
+keyb3 = ReplyKeyboardMarkup(row_width=5)
+keyb3.add(KeyboardButton('Добавить'), KeyboardButton('Удалить'))
+keyb3.add(KeyboardButton('Назад'))
 
-def parse_salepage(url):
+keyb4 = ReplyKeyboardMarkup(row_width=1)
+keyb4.add(KeyboardButton('Action'), KeyboardButton('Adventure'), KeyboardButton('Casual'), KeyboardButton('RPG'),
+          KeyboardButton('Strategy'))
+keyb4.add(KeyboardButton('Indie'), KeyboardButton('Massively Multiplayer'), KeyboardButton('Racing'),
+          KeyboardButton('Simulation'))
+keyb4.add(KeyboardButton('Назад'))
 
-    games = []
-
-    answer = requests.get(url.format(last_game)).json()
-    for offset in tqdm(range(0, answer["total_count"], 50)):
-        answer = requests.get(url.format(offset)).json()
-        soup = BeautifulSoup(answer["results_html"], 'html.parser')
-        links = soup.find_all("a")
-
-        for i in links:
-            appid = i.attrs.get("data-ds-appid")
-            if appid:
-                if len(appid.split(",")) == 1:
-                    games.append(appid)
-    return games
-
-
-def get_info_about_games(url):
-    games = []
-
-    for appid in tqdm(parse_salepage(salepage_url)):
-        answer = requests.get(url + appid).json()
-        if answer:
-            answer = answer[str(appid)]
-            if answer["success"] and answer["data"]["type"] == "game" and not answer["data"]["is_free"]:
-                name = answer["data"]["name"]
-                short_description = answer["data"]["short_description"]
-                discount_percent = answer["data"]["price_overview"]["discount_percent"]
-                initial_price = answer["data"]["price_overview"]["initial_formatted"]
-                final_formatted = answer["data"]["price_overview"]["final_formatted"]
-                platforms = answer["data"]["platforms"]
-                genres = [genre["description"] for genre in answer["data"]["genres"]]
-                screenshots = [screenshot["path_thumbnail"] for screenshot in answer["data"]["screenshots"]]
-                game_url = f"https://store.steampowered.com/app/{appid}"
-                games.append({
-                    "name": name,
-                    "short_description": short_description,
-                    "discount_percent": discount_percent,
-                    "initial_price": initial_price,
-                    "final_formatted": final_formatted,
-                    "platforms": platforms,
-                    "genres": genres,
-                    "screenshots": screenshots,
-                    "game_url": game_url,
-                    "appid": appid
-                })
-
-    return games
+price = 0
+discount = 0
+desired = []
 
 
-def write_to_database():
-    connection = sqlite3.connect("steam.db")
-    for game in tqdm(get_info_about_games(game_info_url)):
-        connection.execute(
-            "INSERT INTO games ('appid', 'name', 'short_description', 'discount_percent', 'initial_price', 'final_formatted', 'windows', 'mac', 'linux', 'genres', 'screenshots', 'game_url') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            [game["appid"], game["name"], game["short_description"], game["discount_percent"], game["initial_price"],
-             game["final_formatted"], game["platforms"]["windows"], game["platforms"]["mac"],
-             game["platforms"]["linux"], ", ".join(game["genres"]),
-             "\n".join(game["screenshots"]), game["game_url"]])
-    connection.commit()
-    connection.close()
+@bot.message_handler(commands=['start'])
+def start(message):
+    conn = connect("Common/steam.db")
+
+    bot.send_message(message.chat.id, 'Steam_bot к вашим услугам...', reply_markup=keyb1)
+    id = message.from_user.id
+
+    cursor = conn.execute("SELECT * FROM users WHERE id = ?", [id])
+    if not cursor.fetchall():
+        conn.execute("INSERT INTO users VALUES (?, ?, ?, ?)", [id, 0, 0, ""])
+        conn.commit()
 
 
-if __name__ == "__main__":
-    write_to_database()
+@bot.message_handler(content_types=['text'])
+def process_message(message):
+    if message.text == "Информация":
+        conn = connect("Common/steam.db")
+        id = message.from_user.id
+        cursor = conn.execute("SELECT Price FROM users WHERE Id = ?", [id])
+        discs1 = cursor.fetchall()
+        discs1 = str(discs1).replace("[", '')
+        discs1 = str(discs1).replace("(", '')
+        discs1 = str(discs1).replace(",", '')
+        discs1 = str(discs1).replace("]", '')
+        discs1 = str(discs1).replace(")", '')
+        cursor = conn.execute("SELECT Discount FROM users WHERE Id = ?", [id])
+        discs2 = cursor.fetchall()
+        discs2 = str(discs2).replace("[", '')
+        discs2 = str(discs2).replace("(", '')
+        discs2 = str(discs2).replace(",", '')
+        discs2 = str(discs2).replace("]", '')
+        discs2 = str(discs2).replace(")", '')
+        cursor = conn.execute("SELECT Desired FROM users WHERE Id = ?", [id])
+        desired = str(cursor.fetchone())
+        desired = desired.replace('None,', '')
+        desired = desired.replace(',', ';')
+        desired = desired.replace("'", '')
+        conn.commit()
+        bot.send_message(message.chat.id,
+                         'Цена от которой вам будет отправляться оповещение о 100% скидке на игру: ' + str(
+                             discs1) + ' рублей')
+        bot.send_message(message.chat.id,
+                         'Процент скидки от которого вам будет приходить оповещение о такой скидке на желаемые жанры ' + str(
+                             discs2) + '%')
+        bot.send_message(message.chat.id, 'Ваши желаемые игры: ' + str(desired))
+    elif message.text == 'Настройки':
+        bot.send_message(message.chat.id, 'Настройки открыты', reply_markup=keyb2)
+    elif message.text == 'Назад':
+        bot.send_message(message.chat.id, 'Вы перенесены', reply_markup=keyb1)
+    elif message.text == 'Цена':
+        message = bot.send_message(message.chat.id,
+                                   'Введите цену (в рублях) от которой вам будет отправляться оповещение о 100% скидке на игру (ответь только цифрами)')
+        bot.register_next_step_handler(message, save_price)
+    elif message.text == "Процент скидки":
+        bot.send_message(message.chat.id,
+                         'Введите процент скидки (знак процента использовать не надо, просто цифры) от которого вам будет приходить оповещение о такой скидке на желаемые жанры')
+        bot.register_next_step_handler(message, save_discount)
+    elif message.text == "Желаемое":
+        bot.send_message(message.chat.id, ' Выбери действие ', reply_markup=keyb3)
+    elif message.text == "Добавить":
+        bot.send_message(message.chat.id, ' Добавь жанр (название вбивай точно и без кавычек) жанры на выбор',
+                         reply_markup=keyb4)
+        bot.register_next_step_handler(message, save_desired)
+    elif message.text == "Показать игры по настройкам":  # S.find(str, [start],[end])	#S.rfind(str, [start],[end])
+        conn = connect("Common/steam.db")
+        id = message.from_user.id
+        cursor = conn.execute("SELECT Desired FROM users WHERE Id = ?", [id])
+        genres = cursor.fetchone()[0].split(";")
+        # print(genres)
+
+        user_suitable_games = set()
+
+        for i in genres:
+            if i:
+                # print(i)
+                cursor1 = conn.execute("SELECT * FROM games where genres = ?", [i])
+                for game in cursor1.fetchall():
+                    user_suitable_games.add(game)
+
+        user_discount = int(conn.execute("SELECT Discount FROM users WHERE Id = ?", [id]).fetchone()[0])
+        print(user_discount)
+
+        answer = []
+
+        sended_games = ""
+
+        for i in user_suitable_games:
+            if user_discount >= int(i[3]):
+                answer.append(i)
+                sended_games += str(i[0]) + "\n"
+
+        counter = 0
+
+        cursor = conn.execute("select sended_games from users where id = ?", [id])
+        sended_games = cursor.fetchone()[0]
+
+        sending = []
+        # print("initial", sended_games)
+        if len(user_suitable_games) > 10:
+            for game in user_suitable_games:
+                if counter == 10:
+                    break
+                else:
+                    if str(game[0]) not in sended_games:
+                        # print(game[0], sended_games.replace('\n', '_'))
+                        bot.send_message(message.chat.id, f"Игра - {game[1]}\n"
+                                                          f"Цена была - {game[4]}\n"
+                                                          f"Цена стала - {game[5]}\n"
+                                                          f"Скидка - {game[3]}%\n"
+                                                          f"Ссылка на игру в Steam - {game[11]}\n")
+                        sended_games += str(game[0]) + "\n"
+                        conn.execute("UPDATE users SET sended_games = ? WHERE id = ?", [sended_games, id])
+                        conn.commit()
+                        counter += 1
+                    else:
+                        sending.append([game[0]])
+        else:
+            for game in user_suitable_games:
+                bot.send_message(message.chat.id, f"Игра - {game[1]}\n"
+                                                  f"Цена была - {game[4]}\n"
+                                                  f"Цена стала - {game[5]}\n"
+                                                  f"Скидка - {game[3]}%\n"
+                                                  f"Ссылка на игру в Steam - {game[11]}\n")
+                sended_games += str(game[0]) + "\n"
+                conn.execute("UPDATE users SET sended_games = ? WHERE Id = ?", [sended_games, id])
+                conn.commit()
+                counter += 1
+        conn.close()
+
+    elif message.text == "Удалить":
+        bot.send_message(message.chat.id, ' Удалить жанр (название вбивай точно и без кавычек) ', reply_markup=keyb4)
+        bot.register_next_step_handler(message, del_desired)  # Donation Alerts (пожертвование)
+    elif message.text == "Donation Alerts (пожертвование)":
+        bot.send_message(message.chat.id, ' https://www.donationalerts.com/r/glebzzzik ')
+
+
+def save_price(message):  # message.text
+    conn = connect("Common/steam.db")
+    id = message.from_user.id
+    cursor = conn.execute("UPDATE users SET Price = ? WHERE Id = ? ", [int(message.text), id])
+    bot.send_message(message.chat.id, 'Цена обновлена ')
+    conn.commit()
+
+
+def save_discount(message):  # message.text
+    conn = connect("Common/steam.db")
+    id = message.from_user.id
+    cursor = conn.execute("UPDATE users SET Discount = ? WHERE Id = ? ", [int(message.text), id])
+    bot.send_message(message.chat.id, 'Процент обновлён ')
+    conn.commit()  # desired
+
+
+def save_desired(message):  # message.text
+    if str(message.text) == 'Назад':
+        bot.send_message(message.chat.id, 'Вы перенесены', reply_markup=keyb1)
+    else:
+        conn = connect("Common/steam.db")
+        id = message.from_user.id
+        cursor = conn.execute("SELECT Desired FROM users WHERE Id = ?", [id])
+        old_desired = list(cursor.fetchone())
+        desired = str(old_desired[0]) + " " + str(message.text)
+        desired = desired.strip()
+        desired = desired.replace('None,', '')
+        desired = desired.replace(' ', ';')
+        conn.commit()
+        conn.execute("UPDATE users SET Desired = ? WHERE Id = ?", [str(desired), id])
+        bot.send_message(message.chat.id, 'Жанр добавлен ', reply_markup=keyb3)
+        conn.commit()  # desired
+
+
+def del_desired(message):  # message.text
+    conn = connect("Common/steam.db")
+    id = message.from_user.id
+    cursor = conn.execute("SELECT Desired FROM users WHERE Id = ?", [id])
+    old_desired = list(cursor.fetchone())
+    desired = str(old_desired[0])
+    desired = desired.replace('None,', '')
+    desired = desired.replace(str(message.text) + ',', '')
+    desired = desired.replace(str(message.text) + ';', '')
+    desired = desired.replace(str(message.text), '')
+    desired = desired.replace(',', ';')
+    desired = desired.strip()
+    conn.commit()
+
+    conn.execute("UPDATE users SET Desired = ? WHERE Id = ?", [str(desired), id])
+    bot.send_message(message.chat.id, 'Жанр удален', reply_markup=keyb3)
+    conn.commit()  # desired
+
+
+bot.polling()
