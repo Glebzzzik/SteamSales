@@ -5,19 +5,19 @@ from sqlite3 import connect
 
 bot = TeleBot(token='5314538945:AAGurlaBMqcoOxeKk2yrMUABvDOc_c_3LK4')
 
-keyb1 = types.ReplyKeyboardMarkup(row_width=5)
+keyb1 = types.ReplyKeyboardMarkup(row_width=2)
 keyb1.add(KeyboardButton('Настройки'), KeyboardButton('Информация'))
 keyb1.add(KeyboardButton('Donation Alerts (пожертвование)'), KeyboardButton('Показать игры по настройкам'))
 
-keyb2 = ReplyKeyboardMarkup(row_width=5)
-keyb2.add(KeyboardButton('Цена'), KeyboardButton('Процент скидки'))
+keyb2 = ReplyKeyboardMarkup(row_width=2)
+keyb2.add(KeyboardButton('Процент скидки'))
 keyb2.add(KeyboardButton('Желаемое'), KeyboardButton('Назад'))
 
-keyb3 = ReplyKeyboardMarkup(row_width=5)
+keyb3 = ReplyKeyboardMarkup(row_width=2)
 keyb3.add(KeyboardButton('Добавить'), KeyboardButton('Удалить'))
 keyb3.add(KeyboardButton('Назад'))
 
-keyb4 = ReplyKeyboardMarkup(row_width=1)
+keyb4 = ReplyKeyboardMarkup(row_width=2)
 keyb4.add(KeyboardButton('Action'), KeyboardButton('Adventure'), KeyboardButton('Casual'), KeyboardButton('RPG'),
           KeyboardButton('Strategy'))
 keyb4.add(KeyboardButton('Indie'), KeyboardButton('Massively Multiplayer'), KeyboardButton('Racing'),
@@ -62,18 +62,16 @@ def process_message(message):
         discs2 = str(discs2).replace("]", '')
         discs2 = str(discs2).replace(")", '')
         cursor = conn.execute("SELECT Desired FROM users WHERE Id = ?", [id])
-        desired = str(cursor.fetchone())
-        desired = desired.replace('None,', '')
-        desired = desired.replace(',', ';')
-        desired = desired.replace("'", '')
+        desired = cursor.fetchone()[0].split(";")[1:]
+        print(desired)
+        # desired = desired.replace('None,', '')
+        # desired = desired.replace(',', ';')
+        # desired = desired.replace("'", '')
         conn.commit()
-        bot.send_message(message.chat.id,
-                         'Цена от которой вам будет отправляться оповещение о 100% скидке на игру: ' + str(
-                             discs1) + ' рублей')
         bot.send_message(message.chat.id,
                          'Процент скидки от которого вам будет приходить оповещение о такой скидке на желаемые жанры ' + str(
                              discs2) + '%')
-        bot.send_message(message.chat.id, 'Ваши желаемые игры: ' + str(desired))
+        bot.send_message(message.chat.id, 'Ваши желаемые жанры: ' + ", ".join(desired))
     elif message.text == 'Настройки':
         bot.send_message(message.chat.id, 'Настройки открыты', reply_markup=keyb2)
     elif message.text == 'Назад':
